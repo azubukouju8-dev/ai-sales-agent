@@ -1,0 +1,154 @@
+{
+  "name": "WF-01 Ingest USAspending",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "3109ba21-239d-41d3-a325-0484864290cb",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.usaspending.gov/api/v2/search/spending_by_award/",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"filters\": {\n    \"award_type_codes\": [\"A\", \"B\", \"C\", \"D\"],\n    \"naics_codes\": [\"236220\", \"236210\", \"238210\", \"238220\", \"236115\", \"236116\", \"236118\"],\n    \"time_period\": [{\"start_date\": \"2024-01-01\", \"end_date\": \"2026-09-05\"}]\n  },\n  \"fields\": [\n    \"Award ID\",\n    \"Recipient Name\",\n    \"Award Amount\",\n    \"Description\",\n    \"Start Date\",\n    \"End Date\",\n    \"Place of Performance State Code\",\n    \"Awarding Agency\"\n  ],\n  \"page\": 1,\n  \"limit\": 100,\n  \"sort\": \"Start Date\",\n  \"order\": \"desc\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "89a17a78-88f1-4124-a874-9ef5988a7e66",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "f5fe35c3-28af-4056-a8ca-08acf8e63529",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const r = item.json;\n  return {\n    json: {\n      source: 'usaspending',\n      source_id: String(r['Award ID'] || ''),\n      title: (r['Description'] || '').slice(0, 500),\n      naics: '236220',\n      state: r['Place of Performance State Code'] || null,\n      value: r['Award Amount'] ? Number(r['Award Amount']) : null,\n      posted_at: r['Start Date'] || null,\n      deadline: r['End Date'] || null,\n      raw: r\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "74006386-0ce1-4c03-8e4c-1bef6367c7a1",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO projects (source, source_id, title, naics, state, value, posted_at, deadline)\nVALUES (\n  '{{ ($json.source || '').replace(/'/g, \"''\") }}',\n  '{{ ($json.source_id || '').replace(/'/g, \"''\") }}',\n  '{{ ($json.title || '').replace(/'/g, \"''\") }}',\n  '{{ ($json.naics || '').replace(/'/g, \"''\") }}',\n  '{{ ($json.state || '').replace(/'/g, \"''\") }}',\n  {{ $json.value === null || $json.value === undefined || $json.value === '' ? 'NULL' : $json.value }},\n  {{ $json.posted_at ? \"'\" + $json.posted_at + \"'\" : 'NULL' }},\n  {{ $json.deadline ? \"'\" + $json.deadline + \"'\" : 'NULL' }}\n)\nON CONFLICT (source, source_id) DO NOTHING;",
+        "options": {
+          "queryReplacement": "="
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        0
+      ],
+      "id": "45c04313-db93-4b93-9a35-d16f3e299b4d",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "db92aafa-9a6a-408a-a10e-9a13d172f731",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ba0a852c7757b45b14a92cffd7e12d1252110be600fed17e39ef3836c643dec0"
+  },
+  "nodeGroups": [],
+  "id": "QHOMvuj9QyQE6UVw",
+  "tags": []
+}

@@ -1,0 +1,133 @@
+{
+  "name": "WF-09 Daily Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        -64
+      ],
+      "id": "37e9af90-d568-46c1-9d6d-e8ea5a8bc727",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  (SELECT count(*) FROM projects WHERE status='new') AS new,\n  (SELECT count(*) FROM projects WHERE status='qualified') AS qualified,\n  (SELECT count(*) FROM projects WHERE status='enriched') AS enriched,\n  (SELECT count(*) FROM projects WHERE status='drafted') AS drafted,\n  (SELECT count(*) FROM projects WHERE status='rejected') AS rejected,\n  (SELECT count(*) FROM messages WHERE status='sent') AS emails_sent,\n  (SELECT count(*) FROM messages WHERE status='draft') AS drafts_pending,\n  (SELECT count(*) FROM replies WHERE classification='interested') AS interested,\n  (SELECT count(*) FROM replies WHERE classification='question') AS questions,\n  (SELECT count(*) FROM crm_log) AS crm_contacts,\n  (SELECT count(*) FROM suppressions) AS suppressed;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        -64
+      ],
+      "id": "2b83f7db-4c6b-447f-9725-1e03bec34b29",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = items[0].json;\nconst today = new Date().toLocaleDateString();\nconst report = `DAILY PIPELINE REPORT — ${today}\n=====================================\n\nPROJECT PIPELINE\n  New (unprocessed):     ${s.new}\n  Qualified:             ${s.qualified}\n  Enriched (w/ contact): ${s.enriched}\n  Drafted:               ${s.drafted}\n  Rejected:              ${s.rejected}\n\nOUTREACH\n  Emails sent:           ${s.emails_sent}\n  Drafts pending review: ${s.drafts_pending}\n\nREPLIES NEEDING ATTENTION\n  Interested:            ${s.interested}\n  Questions:             ${s.questions}\n\nCRM & COMPLIANCE\n  Contacts in CRM:       ${s.crm_contacts}\n  Suppressed (opt-out):  ${s.suppressed}\n\n=====================================\nHot opportunities: ${Number(s.interested) + Number(s.questions)} replies need a human follow-up today.`;\n\nreturn [{ json: { report } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -64
+      ],
+      "id": "e5342e75-65b5-4369-9b59-c3988e7995bf",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "fromEmail": "pipeline@yourcompany.com",
+        "toEmail": "you@yourcompany.com",
+        "subject": "Daily Pipeline Report",
+        "emailFormat": "text",
+        "text": "={{ $json.report }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        608,
+        -64
+      ],
+      "id": "263fe6b9-36b2-4935-be61-3331ad6647e6",
+      "name": "Send an Email",
+      "webhookId": "bb15db42-169f-4654-a52e-33f2a3fc249b",
+      "credentials": {
+        "smtp": {
+          "id": "vCxupPJ15NuQ2oLG",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "61716928-404a-4312-a746-a63d2d73d444",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ba0a852c7757b45b14a92cffd7e12d1252110be600fed17e39ef3836c643dec0"
+  },
+  "nodeGroups": [],
+  "id": "Cpsb8RopcNTdi1dq",
+  "tags": []
+}

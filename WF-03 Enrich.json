@@ -1,0 +1,193 @@
+{
+  "name": "WF-03 Enrich",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, title, state\nFROM projects\nWHERE status = 'qualified'\nORDER BY id\nLIMIT 10;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "d7ba1682-da54-41b8-b41d-a74b3c4eac6b",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const roles = ['Estimator', 'Project Manager', 'Business Development', 'Preconstruction Manager'];\nconst first = ['James','Maria','David','Linda','Robert','Susan','Michael','Karen'];\nconst last  = ['Smith','Johnson','Williams','Brown','Jones','Garcia','Miller','Davis'];\nconst pick = a => a[Math.floor(Math.random()*a.length)];\n\nreturn items.map(item => {\n  const p = item.json;\n  const companyName = `${pick(last)} Construction Group`;\n  const domain = companyName.toLowerCase().replace(/[^a-z]/g,'') + '.com';\n  const fn = pick(first), ln = pick(last);\n  return {\n    json: {\n      project_id: p.id,\n      company_name: companyName,\n      domain: domain,\n      contact_name: `${fn} ${ln}`,\n      role: pick(roles),\n      email: `${fn.toLowerCase()}.${ln.toLowerCase()}@${domain}`,\n      confidence: 60 + Math.floor(Math.random()*40)\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "39446513-8dde-4406-978b-b48480753146",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO companies (project_id, name, domain)\nVALUES (\n  {{ $json.project_id }},\n  '{{ ($json.company_name || '').replace(/'/g, \"''\") }}',\n  '{{ ($json.domain || '').replace(/'/g, \"''\") }}'\n)\nRETURNING id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        672,
+        0
+      ],
+      "id": "7ba658db-5577-454d-905a-10a2f2cf91ce",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO contacts (company_id, project_id, name, role, email, confidence)\nVALUES (\n  {{ $json.id }},\n  {{ $('Code in JavaScript').item.json.project_id }},\n  '{{ $('Code in JavaScript').item.json.contact_name.replace(/'/g, \"''\") }}',\n  '{{ $('Code in JavaScript').item.json.role.replace(/'/g, \"''\") }}',\n  '{{ $('Code in JavaScript').item.json.email.replace(/'/g, \"''\") }}',\n  {{ $('Code in JavaScript').item.json.confidence }}\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        0
+      ],
+      "id": "e3a8265a-216c-4226-99ab-e1792760a342",
+      "name": "Execute a SQL query2",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE projects\nSET status = 'enriched', status_at = now()\nWHERE status = 'qualified'\n  AND id IN (SELECT project_id FROM contacts);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "de4e4f16-3a3c-4a3a-9b35-a387ee6e6114",
+      "name": "Execute a SQL query3",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "cf34c0bd-643b-4933-bc29-49b8850c40d2",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query2": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "7e115f04-769c-41fa-8a69-cda2923d76bf",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ba0a852c7757b45b14a92cffd7e12d1252110be600fed17e39ef3836c643dec0"
+  },
+  "nodeGroups": [],
+  "id": "vRyK9oAF7vVMY72X",
+  "tags": []
+}

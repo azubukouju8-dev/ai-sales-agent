@@ -1,0 +1,186 @@
+{
+  "name": "WF-02 Qualify",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, title, naics, state, value\nFROM projects\nWHERE status = 'new'\nORDER BY id\nLIMIT 25;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "f2cdb6e0-d8f7-4a8b-9c13-60ffc6ea1b6d",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a lead qualifier for a GENERAL BUILDING construction company. We build whole buildings: commercial offices, schools, warehouses, apartments, renovations, tenant build-outs. We do NOT want civil/infrastructure work like roads, bridges, dams, pipelines, fencing, border barriers, landscaping, or single-trade-only jobs.\n\nProject title: {{ $json.title }}\nNAICS: {{ $json.naics }}\nState: {{ $json.state }}\nValue: {{ $json.value }}\n\nDecide if this fits our company. Respond with ONLY a JSON object and nothing else:\n{\"fit\": true or false, \"score\": 0 to 100, \"reason\": \"short reason\"}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        448,
+        0
+      ],
+      "id": "fdeec5ec-b26d-4609-a724-51489ba290cf",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "dolphin3:8b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        480,
+        192
+      ],
+      "id": "77f73b8d-19be-4907-8402-e55ae88c2c3f",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "mHiZvYX4AEiQrNwH",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map((item, i) => {\n  let out = { fit: false, score: 0, reason: 'parse error' };\n  try {\n    const text = item.json.text || '';\n    const match = text.match(/\\{[\\s\\S]*\\}/);\n    if (match) out = JSON.parse(match[0]);\n  } catch (e) {}\n\n  // get the matching project id from the SQL node, by position\n  const proj = $('Execute a SQL query').all()[i].json;\n\n  return {\n    json: {\n      id: proj.id,\n      status: out.fit ? 'qualified' : 'rejected',\n      score: out.score ?? 0,\n      reason: (out.reason || '').slice(0, 300)\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ],
+      "id": "125d487e-407a-417f-9cad-1806284470c8",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE projects\nSET status = '{{ $json.status }}',\n    status_at = now()\nWHERE id = {{ $json.id }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1024,
+        0
+      ],
+      "id": "61c14ada-ef29-4376-b455-f1391238e016",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "08a3ecdc-a873-4f0c-9e65-a547e7c4f162",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "2b7c12ae-a2a0-4ef9-a5b5-6c11a67da293",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ba0a852c7757b45b14a92cffd7e12d1252110be600fed17e39ef3836c643dec0"
+  },
+  "nodeGroups": [],
+  "id": "G21TE9pG6xumworj",
+  "tags": []
+}

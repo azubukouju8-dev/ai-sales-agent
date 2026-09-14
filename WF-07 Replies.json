@@ -1,0 +1,219 @@
+{
+  "name": "WF-07 Replies.",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, from_email, body\nFROM replies\nWHERE processed = false\nORDER BY id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "9bdd2f05-fe6d-43ad-9a31-a2cedaee3550",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You classify replies to B2B sales outreach emails. Read the reply and choose ONE category:\n- interested: they want to learn more, talk, or move forward\n- question: they ask a specific question needing an answer\n- not_interested: polite no, already have a vendor, or soft decline\n- unsubscribe: they demand removal / do not contact\n- out_of_office: automatic away/OOO message\n\nReply text: {{ $json.body }}\n\nRespond with ONLY a JSON object, nothing else:\n{\"category\": \"one of the five\", \"route\": \"human or auto\"}\nUse \"human\" for interested and question. Use \"auto\" for the rest.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        448,
+        0
+      ],
+      "id": "157c8ae4-ef5f-4252-b96c-516737c7410c",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "dolphin3:8b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [
+        528,
+        240
+      ],
+      "id": "bcd1b933-181d-4cbe-a061-5b4c6a9a3c53",
+      "name": "Ollama Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "mHiZvYX4AEiQrNwH",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const valid = ['interested','question','not_interested','unsubscribe','out_of_office'];\nreturn items.map((item, i) => {\n  let out = { category: 'not_interested', route: 'auto' };\n  try {\n    const text = item.json.text || '';\n    const m = text.match(/\\{[\\s\\S]*\\}/);\n    if (m) out = JSON.parse(m[0]);\n  } catch (e) {}\n  if (!valid.includes(out.category)) out.category = 'not_interested';\n  const route = (out.category === 'interested' || out.category === 'question') ? 'human' : 'auto';\n  const src = $('Execute a SQL query').all()[i].json;\n  return {\n    json: {\n      reply_id: src.id,\n      from_email: src.from_email,\n      category: out.category,\n      route: route\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ],
+      "id": "d06e8748-b1f6-43d1-9e35-d279cfe8806f",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE replies\nSET classification = '{{ $json.category }}',\n    processed = true\nWHERE id = {{ $json.reply_id }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1024,
+        0
+      ],
+      "id": "3af7d13f-cbf5-4c2b-9c68-91222596c420",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO suppressions (email, reason)\nSELECT '{{ $json.from_email }}', 'unsubscribe'\nWHERE '{{ $json.category }}' = 'unsubscribe';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1248,
+        0
+      ],
+      "id": "06a2aee6-1827-43dd-869e-2dce169e6be6",
+      "name": "Execute a SQL query2",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "d83bdeb0-cbe4-40a5-8a8f-a10b79edf85b",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "4ffac75b-af30-4ad9-afc3-30697195bc1e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ba0a852c7757b45b14a92cffd7e12d1252110be600fed17e39ef3836c643dec0"
+  },
+  "nodeGroups": [],
+  "id": "WiO0EpyrCVZNXsMG",
+  "tags": []
+}

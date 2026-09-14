@@ -1,0 +1,212 @@
+{
+  "name": "WF-05 — Approve",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "Approve",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -16,
+        -128
+      ],
+      "id": "8013ba9e-3919-4cbc-9e5f-8eca2ed1f599",
+      "name": "Webhook",
+      "webhookId": "1999323d-cb1f-48e7-b283-4d9ae13b9e18"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT m.id, m.subject, m.body, c.name AS contact_name, c.email\nFROM messages m\nJOIN contacts c ON c.id = m.contact_id\nWHERE m.status = 'draft' AND m.approved = false\nORDER BY m.id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        208,
+        -128
+      ],
+      "id": "565a1cef-1b68-4cb4-ba38-51c76c9f2d12",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = items.map(i => i.json);\nlet html = `<html><head><style>\nbody{font-family:sans-serif;max-width:800px;margin:20px auto;padding:0 15px}\n.card{border:1px solid #ddd;border-radius:8px;padding:16px;margin:16px 0}\n.sub{font-weight:bold;font-size:18px}\n.to{color:#666;margin:4px 0}\n.body{white-space:pre-wrap;margin:12px 0;color:#333}\na{display:inline-block;padding:8px 16px;border-radius:6px;text-decoration:none;margin-right:8px}\n.ok{background:#16a34a;color:#fff}.no{background:#dc2626;color:#fff}\n</style></head><body><h2>Draft Emails (${rows.length})</h2>`;\nfor (const r of rows) {\n  html += `<div class=\"card\">\n    <div class=\"sub\">${r.subject}</div>\n    <div class=\"to\">To: ${r.contact_name} &lt;${r.email}&gt;</div>\n    <div class=\"body\">${r.body}</div>\n    <a class=\"ok\" href=\"/webhook/decide?id=${r.id}&d=ok\">Approve</a>\n    <a class=\"no\" href=\"/webhook/decide?id=${r.id}&d=no\">Reject</a>\n  </div>`;\n}\nhtml += `</body></html>`;\nreturn [{ json: { html } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        -128
+      ],
+      "id": "28db2dd5-a5ed-4f33-8552-6437dbb02863",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        656,
+        -128
+      ],
+      "id": "601a6a43-71ca-4564-b214-52d4694009b4",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "path": "decide ",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -16,
+        96
+      ],
+      "id": "ab6319b9-efc6-4785-9821-bfecc04e48d7",
+      "name": "Webhook1",
+      "webhookId": "f6652889-9b52-4831-ab27-dd6133637788"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query.d === 'ok' ? 'Approved ✓' : 'Rejected ✗' }} — <a href=\"/webhook/Approve\">back to list</a>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        432,
+        96
+      ],
+      "id": "b5bf744b-8865-4f41-8486-31db03d2acca",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE messages\nSET approved = {{ $json.query.d === 'ok' ? true : false }},\n    status = '{{ $json.query.d === 'ok' ? 'approved' : 'rejected' }}'\nWHERE id = {{ $json.query.id }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        208,
+        96
+      ],
+      "id": "f04f3211-6a44-46b6-8daa-1a25ebd3ffa1",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "0d0dccd6-c3ae-4277-bb15-5fea5fa2b1f7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ba0a852c7757b45b14a92cffd7e12d1252110be600fed17e39ef3836c643dec0"
+  },
+  "nodeGroups": [],
+  "id": "xqF337pT50awNMpJ",
+  "tags": []
+}

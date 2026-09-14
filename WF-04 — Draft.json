@@ -1,0 +1,220 @@
+{
+  "name": "WF-04 — Draft",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT p.id AS project_id, p.title, p.state,\n       c.id AS contact_id, c.name AS contact_name, c.role, c.email\nFROM projects p\nJOIN contacts c ON c.project_id = p.id\nWHERE p.status = 'enriched'\nORDER BY p.id\nLIMIT 5;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        144,
+        0
+      ],
+      "id": "6d3ce54d-4d1d-40d9-bb11-5421f304dc2e",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You write short, professional B2B outreach emails for a GENERAL BUILDING construction company seeking subcontracting or partnership opportunities.\n\nWrite a cold outreach email to:\nName: {{ $json.contact_name }}\nRole: {{ $json.role }}\nAbout their project: {{ $json.title }}\nLocation: {{ $json.state }}\n\nRules:\n- Keep it under 120 words.\n- Reference their specific project.\n- Professional, direct, not salesy.\n- End with a soft call to action (a brief call).\n\nRespond with ONLY a JSON object, nothing else:\n{\"subject\": \"email subject line\", \"body\": \"full email body\"}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        368,
+        0
+      ],
+      "id": "6ed82950-5f8f-4a2d-962f-4785fea9adea",
+      "name": "Basic LLM Chain",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:1b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        448,
+        240
+      ],
+      "id": "291aa272-fd27-45de-815e-b63d219aa4d7",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "mHiZvYX4AEiQrNwH",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map((item, i) => {\n  let out = { subject: '', body: '' };\n  try {\n    const text = item.json.text || '';\n    const match = text.match(/\\{[\\s\\S]*\\}/);\n    if (match) out = JSON.parse(match[0]);\n  } catch (e) {}\n  const src = $('Execute a SQL query').all()[i].json;\n  return {\n    json: {\n      project_id: src.project_id,\n      contact_id: src.contact_id,\n      subject: (out.subject || '').slice(0, 300),\n      body: (out.body || '').slice(0, 3000)\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "id": "ca4ceadd-93e9-4737-a576-7e3f9e764656",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (project_id, contact_id, subject, body, status, approved)\nVALUES (\n  {{ $json.project_id }},\n  {{ $json.contact_id }},\n  '{{ ($json.subject || '').replace(/'/g, \"''\") }}',\n  '{{ ($json.body || '').replace(/'/g, \"''\") }}',\n  'draft',\n  false\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        944,
+        0
+      ],
+      "id": "e517223b-2e64-40f6-b107-6e717fbc3145",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE projects\nSET status = 'drafted', status_at = now()\nWHERE status = 'enriched'\n  AND id IN (SELECT project_id FROM messages);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1168,
+        0
+      ],
+      "id": "98656788-37ca-4f44-bf93-cd540bb0d010",
+      "name": "Execute a SQL query2",
+      "credentials": {
+        "postgres": {
+          "id": "WfOHWqm5NfLkbK51",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -96,
+        0
+      ],
+      "id": "08bdf7a5-fde9-4de7-90ab-649aaee3e63e",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "1afcb2b9-fc8a-4ce7-a4a5-cea7f3425190",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ba0a852c7757b45b14a92cffd7e12d1252110be600fed17e39ef3836c643dec0"
+  },
+  "nodeGroups": [],
+  "id": "ALUT0zxHF1jJ52sO",
+  "tags": []
+}
